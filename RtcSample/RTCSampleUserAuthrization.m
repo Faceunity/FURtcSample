@@ -33,10 +33,10 @@
                 [loginDic setObject:value forKey:key];
             }
             
-            info.channel   = channelName;
-            info.appid     = loginDic[@"appid"];
+            info.channelId   = channelName;
+            info.appId     = loginDic[@"appid"];
             info.nonce     = loginDic[@"nonce"];
-            info.user_id   = loginDic[@"userid"];
+            info.userId   = loginDic[@"userid"];
             info.token     = loginDic[@"token"];
             info.timestamp = [loginDic[@"timestamp"] longLongValue];
             info.gslb      = loginDic[@"gslb"];

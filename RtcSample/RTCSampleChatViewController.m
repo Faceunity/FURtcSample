@@ -12,11 +12,19 @@
 #import "UIViewController+RTCSampleAlert.h"
 #import "RTCSampleRemoteUserManager.h"
 #import "RTCSampleRemoteUserModel.h"
+#import "NSString+SHA256.h"
 
-#import "FUManager.h"
-#import <FUAPIDemoBar/FUAPIDemoBar.h>
 
-@interface RTCSampleChatViewController ()<AliRtcEngineDelegate,UICollectionViewDelegate,UICollectionViewDataSource,UICollectionViewDelegateFlowLayout,FUAPIDemoBarDelegate>
+/**faceU */
+#import "FUDemoManager.h"
+#import <FURenderKit/FUCaptureCamera.h>
+#import <FURenderKit/FUGLDisplayView.h>
+
+/**faceU */
+
+
+
+@interface RTCSampleChatViewController ()<AliRtcEngineDelegate,UICollectionViewDelegate,UICollectionViewDataSource,UICollectionViewDelegateFlowLayout,FUCaptureCameraDelegate>
 
 
 /**
@@ -24,18 +32,28 @@
  */
 @property(nonatomic, strong) UIButton      *startButton;
 
+/** 切换摄像头 */
+@property(nonatomic, strong) UIButton *cameraBtn;
+
+/** 静音 🔇 */
+@property(nonatomic, strong) UIButton *muteBtn;
+
 
 /**
  @brief SDK实例
  */
 @property (nonatomic, strong) AliRtcEngine *engine;
 
+/**
+ @brief 本地用户视图
+ */
+@property(nonatomic, strong) FUGLDisplayView *localView;
+
 
 /**
  @brief 远端用户管理
  */
 @property(nonatomic, strong) RTCSampleRemoteUserManager *remoteUserManager;
-
 
 /**
  @brief 远端用户视图
@@ -48,8 +66,10 @@
  */
 @property(nonatomic, assign) BOOL isJoinChannel;
 
-/* 美颜调节UI */
-@property (nonatomic, strong) FUAPIDemoBar *demoBar;
+
+@property(nonatomic, strong) FUCaptureCamera *mCamera;
+@property(nonatomic, strong) FUDemoManager *demoManager;
+
 
 @end
 
@@ -68,17 +88,67 @@
     //开启本地预览
     [self startPreview];
     
+    // 外部采集摄像头
+    [self setupmCamera];
+    
     //添加页面控件
     [self addSubviews];
     
-    /* 美颜UI */
-    [self setupDemoBar];
+    if (self.isuseFU) {
+        
+        // FaceUnity UI
+        CGFloat safeAreaBottom = 0;
+        if (@available(iOS 11.0, *)) {
+            safeAreaBottom = [UIApplication sharedApplication].delegate.window.safeAreaInsets.bottom;
+        }
+        self.demoManager = [[FUDemoManager alloc] initWithTargetController:self originY:CGRectGetHeight(self.view.frame) - FUBottomBarHeight - safeAreaBottom - 160];
+    }
     
 }
 
--(void)viewWillDisappear:(BOOL)animated{
-    [super viewWillDisappear:animated];
-    [[FUManager shareManager] destoryItems];
+
+#pragma mark ----------FUCameraDelegate-----
+
+/// 开始采集
+- (void)viewWillAppear:(BOOL)animated{
+    [super viewWillAppear:animated];
+    
+    [_mCamera startCapture];
+    
+}
+
+/// 外部摄像头采集
+- (void)setupmCamera{
+
+    _mCamera = [[FUCaptureCamera alloc] initWithCameraPosition:(AVCaptureDevicePositionFront) captureFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
+    _mCamera.sessionPreset = AVCaptureSessionPreset1280x720;
+    _mCamera.delegate = self;
+
+}
+
+/// 采集数据回调
+/// @param sampleBuffer sampleBuffer
+- (void)didOutputVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer{
+
+    if (_engine) {
+        
+        CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+        if (self.isuseFU) {
+        
+            pixelBuffer = [[FUManager shareManager] renderItemsToPixelBuffer:pixelBuffer];
+        }
+        CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+        AliRtcVideoDataSample *dataSample = [[AliRtcVideoDataSample alloc] init];
+        dataSample.format = AliRtcVideoFormat_NV21;
+        dataSample.type = AliRtcBufferType_CVPixelBuffer;
+        dataSample.pixelBuffer = pixelBuffer;
+        dataSample.timeStamp = 0;
+        [self.engine pushExternalVideoFrame:dataSample sourceType:(AliRtcVideosourceCameraType)];
+        [self.localView displayPixelBuffer:pixelBuffer];
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+        
+    }
+    
 }
 
 
@@ -96,6 +166,7 @@
  @brief 初始化SDK
  */
 - (void)initializeSDK{
+    
     // 创建SDK实例，注册delegate，extras可以为空
     NSDictionary *extrasDic = @{@"user_specified_video_preprocess":@"TRUE"};
     NSData *data = [NSJSONSerialization dataWithJSONObject:extrasDic options:0 error:NULL];
@@ -103,24 +174,30 @@
     
     _engine = [AliRtcEngine sharedInstance:self extras:extrasStr];
     
-    NSLog(@"sdk version = %@",[AliRtcEngine getSdkVersion]);
+    AliRtcVideoEncoderConfiguration *config = [[AliRtcVideoEncoderConfiguration alloc] init];
+    config.dimensions = CGSizeMake(720, 1280);
+    config.frameRate = 30;
+    config.bitrate = 0;
+    config.mirrorMode = 0;
+    config.orientationMode = 0;
+    config.rotationMode = 0;
+    [_engine setVideoEncoderConfiguration:config];
+    [_engine setChannelProfile:(AliRtcCommunication)];
     
+    // 设置外部采集
+    [_engine setExternalVideoSource:YES sourceType:(AliRtcVideosourceCameraType) renderMode:(AliRtcRenderModeCrop)];
 }
 
 - (void)startPreview{
+
     // 设置本地预览视频
-    AliVideoCanvas *canvas   = [[AliVideoCanvas alloc] init];
-    AliRenderView *viewLocal = [[AliRenderView alloc] initWithFrame:self.view.bounds];
-    canvas.view = viewLocal;
-    canvas.renderMode = AliRtcRenderModeAuto;
-    [self.view addSubview:viewLocal];
-    [self.engine setLocalViewConfig:canvas forTrack:AliRtcVideoTrackCamera];
-    
+    FUGLDisplayView *localView = [[FUGLDisplayView alloc] initWithFrame:self.view.bounds];
+    localView.contentMode = FUGLDisplayViewContentModeScaleAspectFill;
+    [self.view addSubview:localView];
+    self.localView = localView;
     // 开启本地预览
     [self.engine startPreview];
     
-    /* 订阅 */
-    [self.engine subscribeVideoTexture:@"" videoSource:AliRtcVideosourceCameraLargeType videoTextureType:AliRtcVideoTextureTypePre];
 }
 
 #pragma mark - action
@@ -129,115 +206,123 @@
  @brief 登陆服务器，并开始推流
  */
 - (void)startPreview:(UIButton *)sender {
-    
-    sender.enabled = NO;
-    //设置自动(手动)模式
-    [self.engine setAutoPublish:YES withAutoSubscribe:YES];
-    
+
     //随机生成用户名，仅是demo展示使用
-    NSString *userName = [NSString stringWithFormat:@"iOSUser%u",arc4random()%1234];
+    NSString *userId = [NSString stringWithFormat:@"iOSUser%u",arc4random()%1234];
     
-    //AliRtcAuthInfo:各项参数均需要客户App Server(客户的server端) 通过OpenAPI来获取，然后App Server下发至客户端，客户端将各项参数赋值后，即可joinChannel
-    AliRtcAuthInfo *authInfo = [RTCSampleUserAuthrization getPassportFromAppServer:self.channelName userName:userName];
+    NSString * uuidStr =[[[UIDevice currentDevice] identifierForVendor] UUIDString];;
+    NSString *nonce = [NSString stringWithFormat:@"AK-%@",[uuidStr lowercaseString]];
+    
+    NSString *timestamp = [NSString stringWithFormat:@"%.0f",[[NSDate date] timeIntervalSince1970] + 24 * 7 * 3600];
+    
+    //sha256(appId + appKey + channelId + userId + nonce + timestamp)
+    NSString *token = @"sv8hdwp7";
+    
+    token = [token stringByAppendingString:@"57e964d805be8b173f1de8abaa4f5dca"];
+    token = [token stringByAppendingString:self.channelName];
+    token = [token stringByAppendingString:userId];
+    token = [token stringByAppendingString:nonce];
+    token = [token stringByAppendingString:timestamp];
+    token = [NSString sha256HashFor:token];
+    
+    //AliRtcAuthInfo 配置项, token 相关数据的获取请在服务端配置, 示例代码仅供演示使用
+    AliRtcAuthInfo *authinfo = [[AliRtcAuthInfo alloc]init];
+    authinfo.channelId   = self.channelName;
+    authinfo.appId     = @"sv8hdwp7";
+    authinfo.nonce     = nonce;
+    authinfo.userId   = userId;
+    authinfo.token     = token;
+    authinfo.timestamp = [timestamp integerValue];
+    authinfo.gslb      = @[@"https://rgslb.rtc.aliyuncs.com"];
+
     
     //加入频道
-    [self.engine joinChannel:authInfo name:userName onResult:^(NSInteger errCode) {
+    [self.engine joinChannel:authinfo name:userId onResult:^(NSInteger errCode, NSString * _Nonnull channel, NSInteger elapsed) {
+            
         //加入频道回调处理
         NSLog(@"joinChannel result: %d", (int)errCode);
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (errCode != 0) {
-                sender.enabled = YES;
+        
+            // 加入频道UI处理
+            if (errCode == 0) { // 加入频道成功
+                
+                _isJoinChannel = YES;
+                sender.hidden = YES;
             }
-            _isJoinChannel = YES;
+            
         });
+        
     }];
     
     //防止屏幕锁定
     [UIApplication sharedApplication].idleTimerDisabled = YES;
+    
+}
+
+- (void)onJoinChannelResult:(int)result channel:(NSString *)channel elapsed:(int)elapsed{
+
+    if (result != 0) {
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+           
+            [self showAlertWithMessage:[NSString stringWithFormat:@"加入房间失败,请重试,codeError = %d",result] handler:^(UIAlertAction * _Nonnull action) {
+                        
+            }];
+            
+        });
+        
+    }
+}
+
+
+/// 切换摄像头
+/// @param caremaBtn caremaBtn
+- (void)caremaBtnClick:(UIButton *)caremaBtn{
+    
+    caremaBtn.selected = !caremaBtn.selected;
+    [self.mCamera changeCameraInputDeviceisFront:!caremaBtn.selected];
+    if (self.isuseFU) {
+        
+        [[FUManager shareManager] onCameraChange];
+    }
+    
+}
+
+/// 静音
+/// @param muteBtn muteBtn
+- (void)muteBtnClick:(UIButton *)muteBtn{
+    
+    muteBtn.selected = !muteBtn.selected;
+    
+    if (muteBtn.selected) {
+
+        [self.engine muteLocalMic:YES mode:(AliRtcMuteAudioModeDefault)]; // 静音
+        
+    }else{
+    
+        [self.engine muteLocalMic:NO mode:(AliRtcMuteAudioModeDefault)]; // 恢复静音
+    }
+    
 }
 
 /**
  @brief 离开频道
  */
 - (void)leaveChannel:(UIButton *)sender {
+    
     [self leaveChannel];
+    _engine = nil;
+    [self.mCamera resetFocusAndExposureModes];
+    [self.mCamera stopCapture];
+    if (self.isuseFU) {
+        
+        self.isuseFU = NO;
+        [[FUManager shareManager] destoryItems];
+    }
+    
     [UIApplication sharedApplication].idleTimerDisabled = NO;
     [self.navigationController popViewControllerAnimated:YES];
 }
-
-#pragma  mark -  setupDemoBar
-
--(void)setupDemoBar{
-    [[FUManager shareManager] loadItems];
-    [self.view addSubview:self.demoBar];
-}
--(FUAPIDemoBar *)demoBar {
-    if (!_demoBar) {
-        
-        _demoBar = [[FUAPIDemoBar alloc] initWithFrame:CGRectMake(0, self.view.frame.size.height - 164 -120, self.view.frame.size.width, 164)];
-        
-        _demoBar.itemsDataSource = [FUManager shareManager].itemsDataSource;
-        _demoBar.selectedItem = [FUManager shareManager].selectedItem ;
-        
-        _demoBar.filtersDataSource = [FUManager shareManager].filtersDataSource ;
-        _demoBar.beautyFiltersDataSource = [FUManager shareManager].beautyFiltersDataSource ;
-        _demoBar.filtersCHName = [FUManager shareManager].filtersCHName ;
-        _demoBar.selectedFilter = [FUManager shareManager].selectedFilter ;
-        [_demoBar setFilterLevel:[FUManager shareManager].selectedFilterLevel forFilter:[FUManager shareManager].selectedFilter] ;
-        
-        _demoBar.skinDetectEnable = [FUManager shareManager].skinDetectEnable;
-        _demoBar.blurShape = [FUManager shareManager].blurShape ;
-        _demoBar.blurLevel = [FUManager shareManager].blurLevel ;
-        _demoBar.whiteLevel = [FUManager shareManager].whiteLevel ;
-        _demoBar.redLevel = [FUManager shareManager].redLevel;
-        _demoBar.eyelightingLevel = [FUManager shareManager].eyelightingLevel ;
-        _demoBar.beautyToothLevel = [FUManager shareManager].beautyToothLevel ;
-        _demoBar.faceShape = [FUManager shareManager].faceShape ;
-        
-        _demoBar.enlargingLevel = [FUManager shareManager].enlargingLevel ;
-        _demoBar.thinningLevel = [FUManager shareManager].thinningLevel ;
-        _demoBar.enlargingLevel_new = [FUManager shareManager].enlargingLevel_new ;
-        _demoBar.thinningLevel_new = [FUManager shareManager].thinningLevel_new ;
-        _demoBar.jewLevel = [FUManager shareManager].jewLevel ;
-        _demoBar.foreheadLevel = [FUManager shareManager].foreheadLevel ;
-        _demoBar.noseLevel = [FUManager shareManager].noseLevel ;
-        _demoBar.mouthLevel = [FUManager shareManager].mouthLevel ;
-        
-        _demoBar.delegate = self;
-    }
-    return _demoBar ;
-}
-
-/**      FUAPIDemoBarDelegate       **/
-
-- (void)demoBarDidSelectedItem:(NSString *)itemName {
-    
-    [[FUManager shareManager] loadItem:itemName];
-}
-
-- (void)demoBarBeautyParamChanged {
-    
-    [FUManager shareManager].skinDetectEnable = _demoBar.skinDetectEnable;
-    [FUManager shareManager].blurShape = _demoBar.blurShape;
-    [FUManager shareManager].blurLevel = _demoBar.blurLevel ;
-    [FUManager shareManager].whiteLevel = _demoBar.whiteLevel;
-    [FUManager shareManager].redLevel = _demoBar.redLevel;
-    [FUManager shareManager].eyelightingLevel = _demoBar.eyelightingLevel;
-    [FUManager shareManager].beautyToothLevel = _demoBar.beautyToothLevel;
-    [FUManager shareManager].faceShape = _demoBar.faceShape;
-    [FUManager shareManager].enlargingLevel = _demoBar.enlargingLevel;
-    [FUManager shareManager].thinningLevel = _demoBar.thinningLevel;
-    [FUManager shareManager].enlargingLevel_new = _demoBar.enlargingLevel_new;
-    [FUManager shareManager].thinningLevel_new = _demoBar.thinningLevel_new;
-    [FUManager shareManager].jewLevel = _demoBar.jewLevel;
-    [FUManager shareManager].foreheadLevel = _demoBar.foreheadLevel;
-    [FUManager shareManager].noseLevel = _demoBar.noseLevel;
-    [FUManager shareManager].mouthLevel = _demoBar.mouthLevel;
-    
-    [FUManager shareManager].selectedFilter = _demoBar.selectedFilter ;
-    [FUManager shareManager].selectedFilterLevel = _demoBar.selectedFilterLevel;
-}
-
 
 #pragma mark - private
 
@@ -278,8 +363,7 @@
 }
 
 #pragma mark - alirtcengine delegate
-
-- (void)onSubscribeChangedNotify:(NSString *)uid audioTrack:(AliRtcAudioTrack)audioTrack videoTrack:(AliRtcVideoTrack)videoTrack {
+- (void)onRemoteTrackAvailableNotify:(NSString *_Nonnull)uid audioTrack:(AliRtcAudioTrack)audioTrack videoTrack:(AliRtcVideoTrack)videoTrack{
     
     //收到远端订阅回调
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -287,6 +371,7 @@
         if (videoTrack == AliRtcVideoTrackCamera) {
             AliVideoCanvas *canvas = [[AliVideoCanvas alloc] init];
             canvas.renderMode = AliRtcRenderModeAuto;
+//            canvas.mirrorMode = AliRtcRenderMirrorModeAllEnabled;
             canvas.view = [self.remoteUserManager cameraView:uid];
             [self.engine setRemoteViewConfig:canvas uid:uid forTrack:AliRtcVideoTrackCamera];
         }else if (videoTrack == AliRtcVideoTrackScreen) {
@@ -316,42 +401,45 @@
 
 
 
-- (void)onRemoteUserOffLineNotify:(NSString *)uid {
+- (void)onRemoteUserOffLineNotify:(NSString *)uid offlineReason:(AliRtcUserOfflineReason)reason {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.remoteUserManager remoteUserOffLine:uid];
         [self.remoteUserView reloadData];
     });
 }
 
-- (void)onOccurError:(int)error {
+- (void)onOccurError:(int)error message:(NSString *)message{
     
-    __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (error == AliRtcErrorCodeHeartbeatTimeout || error == AliRtcErrorCodePollingError) {
-            [strongSelf showAlertWithMessage:@"网络超时,请退出房间" handler:^(UIAlertAction * _Nonnull action) {
-                [strongSelf leaveChannel:nil];
-            }];
-        }
+    
+        [self showAlertWithMessage:message handler:^(UIAlertAction * _Nonnull action) {
+            
+            [self leaveChannel:nil];
+        }];
+        
     });
 }
 
+
 #pragma  mark -  订阅回调接口
-//-(void)onVideoTextureCreated:(NSString *)uid videoTextureType:(AliRtcVideoTextureType)videoTextureType context:(void *)context{
-//    
+
+//- (BOOL)onCaptureVideoSample:(AliRtcVideoSource)videoSource videoSample:(AliRtcVideoDataSample *)videoSample{
+//
+//    if (videoSource == AliRtcVideosourceCameraType) { //
+//
+//        // 测试性能
+//        [[FUTestRecorder shareRecorder] processFrameWithLog];
+//
+//        [[FUManager shareManager] processFrameWithY:videoSample.dataYPtr U:videoSample.dataUPtr V:videoSample.dataVPtr yStride:videoSample.strideY uStride:videoSample.strideU vStride:videoSample.strideV FrameWidth:videoSample.width FrameHeight:videoSample.height];
+//
+//        [self checkAI];
+//    }
+//
+//
+//
+//    return YES;
 //}
 
--(int)onVideoTexture:(NSString *)uid videoTextureType:(AliRtcVideoTextureType)videoTextureType textureId:(int)textureId width:(int)width height:(int)height extraData:(long)extraData{
-//    NSLog(@"数据来了-------");
-    
-    textureId = [[FUManager shareManager] renderItemWithTexture:textureId Width:width Height:height];
-    
-    return textureId;
-}
-
--(void)onVideoTextureDestory:(NSString *)uid videoTextureType:(AliRtcVideoTextureType)videoTextureType{
-    [[FUManager shareManager] destoryItems];
-}
 
 #pragma mark - add subviews
 
@@ -377,6 +465,28 @@
     _startButton.layer.masksToBounds = YES;
     [_startButton addTarget:self action:@selector(startPreview:) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:_startButton];
+    // 切换摄像头
+    _cameraBtn = [[UIButton alloc] init];
+    [_cameraBtn setTitle:@"相机" forState:(UIControlStateNormal)];
+    _cameraBtn.backgroundColor = [UIColor orangeColor];
+    _cameraBtn.layer.cornerRadius  = rc.size.width/2;
+    _cameraBtn.layer.masksToBounds = YES;
+    rc.origin.x = CGRectGetMinX(_startButton.frame) - 80;
+    _cameraBtn.frame = rc;
+    [_cameraBtn addTarget:self action:@selector(caremaBtnClick:) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:_cameraBtn];
+    
+    // 静音
+    _muteBtn = [[UIButton alloc] init];
+    [_muteBtn setTitle:@"静音" forState:(UIControlStateNormal)];
+    [_muteBtn setTitle:@"X" forState:(UIControlStateSelected)];
+    _muteBtn.backgroundColor = [UIColor orangeColor];
+    _muteBtn.layer.cornerRadius  = rc.size.width/2;
+    _muteBtn.layer.masksToBounds = YES;
+    rc.origin.x = CGRectGetMaxX(_startButton.frame) + 20;
+    _muteBtn.frame = rc;
+    [_muteBtn addTarget:self action:@selector(muteBtnClick:) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:_muteBtn];
     
     rc.origin.x = 10;
     rc.origin.y = [UIApplication sharedApplication].statusBarFrame.size.height+20+44;
