@@ -7,7 +7,8 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "AliRTCSdk.h"
+#import <AliRTCSdk/AliRTCSdk.h>
+#import <AliRTCSdk/AliRenderView.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -17,6 +18,8 @@ NS_ASSUME_NONNULL_BEGIN
  @brief 频道号
  */
 @property(nonatomic, copy) NSString *channelName;
+
+@property(nonatomic, assign) BOOL isuseFU;
 
 @end
 

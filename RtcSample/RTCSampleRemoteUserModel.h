@@ -9,8 +9,8 @@
 #import <Foundation/Foundation.h>
 
 
-#import "AliRTCSdk.h"
-
+#import <AliRTCSdk/AliRTCSdk.h>
+#import <AliRTCSdk/AliRenderView.h>
 
 
 //#import <AliRTCSdk/AliRTCSdk.h>

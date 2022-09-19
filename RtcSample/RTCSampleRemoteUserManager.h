@@ -7,8 +7,9 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "AliRtcEngine.h"
+#import <AliRTCSdk/AliRTCSdk.h>
 #import "RTCSampleRemoteUserModel.h"
+#import <AliRTCSdk/AliRenderView.h>
 
 NS_ASSUME_NONNULL_BEGIN
 

@@ -1,5 +1,5 @@
 #import <UIKit/UIKit.h>
-#import "AliRTCSdk.h"
+#import <AliRTCSdk/AliRTCSdk.h>
 
 // 用户 APP Server 登录信息
 static NSString *AppServer   =  @"http://47.99.178.49/app/v1/";   //服务器app server地址

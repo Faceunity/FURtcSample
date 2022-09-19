@@ -1,5 +1,6 @@
 #import "RTCSampleChannelViewController.h"
-#import "AliRTCSdk.h"
+
+#import <AliRTCSdk/AliRTCSdk.h>
 #import "RTCSampleChatViewController.h"
 #import "UIViewController+RTCSampleAlert.m"
 
@@ -22,6 +23,8 @@
  */
 @property(nonatomic, strong) UILabel     *SDKVersionLabel;
 
+@property(nonatomic, assign) BOOL isuseFU;
+
 
 @end
 
@@ -34,6 +37,22 @@
     //导航栏名称等基本设置
     [self baseSetting];
     
+    UIButton *fuBtn = [[UIButton alloc] initWithFrame:CGRectMake(0, 0, 28, 28)];
+    fuBtn.userInteractionEnabled = NO;
+    fuBtn.enabled = NO;
+    [fuBtn setTitle:@"FU开关" forState:(UIControlStateNormal)];
+    [fuBtn setTitleColor:[UIColor blackColor] forState:(UIControlStateNormal)];
+    fuBtn.titleLabel.font = [UIFont systemFontOfSize:18];
+    
+    UISwitch *fuswitch = [[UISwitch alloc] initWithFrame:CGRectMake(0, 0, 28, 28)];
+    [fuswitch addTarget:self action:@selector(selectedFUChanged:) forControlEvents:(UIControlEventValueChanged)];
+    [fuswitch setOn:YES];
+    
+    self.navigationItem.leftBarButtonItems = @[[[UIBarButtonItem alloc] initWithCustomView:fuBtn],[[UIBarButtonItem alloc] initWithCustomView:fuswitch]];
+    
+    // 默认YES
+    self.isuseFU = YES;
+    
     //添加页面控件
     [self addSubviews];
     
@@ -41,6 +60,14 @@
     [self addGesture];
     
 }
+
+
+- (void)selectedFUChanged:(UISwitch *)sender{
+    
+    self.isuseFU = sender.isOn;
+    
+}
+
 
 #pragma mark - baseSetting
 /**
@@ -94,6 +121,7 @@
     }
     RTCSampleChatViewController *chatVC = [[RTCSampleChatViewController alloc] init];
     chatVC.channelName = _tfChannel.text;
+    chatVC.isuseFU = self.isuseFU;
     [self.navigationController pushViewController:chatVC animated:YES];
     self.tfChannel.text = @"";
 }
