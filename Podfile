@@ -7,10 +7,10 @@ source 'https://mirrors.tuna.tsinghua.edu.cn/git/CocoaPods/Specs.git'
 target 'RtcSample' do
 
 
-  pod 'AliRTCSdk'
+#  pod 'AliRTCSdk'
   pod 'SVProgressHUD'
   pod 'Masonry', '1.1.0'
-  pod 'FURenderKit', '8.3.0'
+  pod 'FURenderKit', '8.7.0'
 
 
 end
