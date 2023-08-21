@@ -1,32 +1,24 @@
 PODS:
-  - AliRTCPluginOpus (1.0.2)
-  - AliRTCSdk (3.0.3):
-    - AliRTCPluginOpus (~> 1.0.2)
-  - FURenderKit (8.3.0)
+  - FURenderKit (8.7.0)
   - Masonry (1.1.0)
   - SVProgressHUD (2.2.5)
 
 DEPENDENCIES:
-  - AliRTCSdk
-  - FURenderKit (= 8.3.0)
+  - FURenderKit (= 8.7.0)
   - Masonry (= 1.1.0)
   - SVProgressHUD
 
 SPEC REPOS:
   https://mirrors.tuna.tsinghua.edu.cn/git/CocoaPods/Specs.git:
-    - AliRTCPluginOpus
-    - AliRTCSdk
     - FURenderKit
     - Masonry
     - SVProgressHUD
 
 SPEC CHECKSUMS:
-  AliRTCPluginOpus: fd91852d5096bd6806005ac851caafb447d90a03
-  AliRTCSdk: 45a283b9b15d22be500ffdd938e04d11523e3b32
-  FURenderKit: 3cd05abd03134d287a1d63cbaaeb95d304ba6bd6
+  FURenderKit: a73f9a86fc4b2963c6c29bd58f0b42a953cf9362
   Masonry: 678fab65091a9290e40e2832a55e7ab731aad201
   SVProgressHUD: 1428aafac632c1f86f62aa4243ec12008d7a51d6
 
-PODFILE CHECKSUM: 107344243ad40b897e5c416dd63599af93c76f88
+PODFILE CHECKSUM: e079512666bcc2579793e312e21d968818e1a419
 
 COCOAPODS: 1.11.3

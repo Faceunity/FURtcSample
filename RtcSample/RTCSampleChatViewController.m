@@ -68,7 +68,6 @@
 
 
 @property(nonatomic, strong) FUCaptureCamera *mCamera;
-@property(nonatomic, strong) FUDemoManager *demoManager;
 
 
 @end
@@ -97,11 +96,8 @@
     if (self.isuseFU) {
         
         // FaceUnity UI
-        CGFloat safeAreaBottom = 0;
-        if (@available(iOS 11.0, *)) {
-            safeAreaBottom = [UIApplication sharedApplication].delegate.window.safeAreaInsets.bottom;
-        }
-        self.demoManager = [[FUDemoManager alloc] initWithTargetController:self originY:CGRectGetHeight(self.view.frame) - FUBottomBarHeight - safeAreaBottom - 160];
+        [FUDemoManager setupFUSDK];
+        [[FUDemoManager shared] addDemoViewToView:self.view originY:CGRectGetHeight(self.view.frame) - FUBottomBarHeight - FUSafaAreaBottomInsets() - 160];
     }
     
 }
@@ -128,14 +124,25 @@
 
 /// 采集数据回调
 /// @param sampleBuffer sampleBuffer
-- (void)didOutputVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer{
+- (void)didOutputVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer captureDevicePosition:(AVCaptureDevicePosition)position{
 
     if (_engine) {
         
         CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
         if (self.isuseFU) {
         
-            pixelBuffer = [[FUManager shareManager] renderItemsToPixelBuffer:pixelBuffer];
+            [[FUDemoManager shared] checkAITrackedResult];
+            if ([FUDemoManager shared].shouldRender) {
+                [[FUTestRecorder shareRecorder] processFrameWithLog];
+                [FUDemoManager updateBeautyBlurEffect];
+                FURenderInput *input = [[FURenderInput alloc] init];
+                input.renderConfig.imageOrientation = FUImageOrientationUP;
+                input.pixelBuffer = pixelBuffer;
+                //开启重力感应，内部会自动计算正确方向，设置fuSetDefaultRotationMode，无须外面设置
+                input.renderConfig.gravityEnable = YES;
+                input.renderConfig.readBackToPixelBuffer = YES;
+                FURenderOutput *outPut = [[FURenderKit shareRenderKit] renderWithInput:input];
+            }
         }
         CVPixelBufferLockBaseAddress(pixelBuffer, 0);
         AliRtcVideoDataSample *dataSample = [[AliRtcVideoDataSample alloc] init];
@@ -283,7 +290,7 @@
     [self.mCamera changeCameraInputDeviceisFront:!caremaBtn.selected];
     if (self.isuseFU) {
         
-        [[FUManager shareManager] onCameraChange];
+        [FUDemoManager resetTrackedResult];
     }
     
 }
@@ -312,14 +319,10 @@
     
     [self leaveChannel];
     _engine = nil;
-    [self.mCamera resetFocusAndExposureModes];
-    [self.mCamera stopCapture];
     if (self.isuseFU) {
-        
-        self.isuseFU = NO;
-        [[FUManager shareManager] destoryItems];
+        [FUDemoManager destory];
     }
-    
+    [self.mCamera stopCapture];
     [UIApplication sharedApplication].idleTimerDisabled = NO;
     [self.navigationController popViewControllerAnimated:YES];
 }
